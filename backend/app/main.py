@@ -6,6 +6,11 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.core.config import settings
+from app.core.supabase import (
+    SupabaseError,
+    SupabaseQueryError,
+    SupabaseUnavailableError,
+)
 from app.api.v1.router import api_router
 from app.services.agent import (
     GeminiServiceError,
@@ -131,6 +136,14 @@ async def task_persistence_error_handler(
 
 @app.exception_handler(FirebaseUnavailableError)
 async def firebase_unavailable_handler(request: Request, exc: FirebaseUnavailableError):
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(SupabaseUnavailableError)
+async def supabase_unavailable_handler(request: Request, exc: SupabaseUnavailableError):
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={"detail": str(exc)},

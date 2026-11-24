@@ -14,6 +14,7 @@ import {
   getAuthToken,
   setAuthToken,
 } from './services/api';
+import { signOutFromSupabase } from './services/supabaseAuth';
 import { Navbar } from './components/Navbar';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { AuthModal } from './components/AuthModal';
@@ -139,6 +140,7 @@ export const App: React.FC = () => {
   }, [loadGlobalOverviewData, currentUser]);
 
   const handleSignOut = () => {
+    signOutFromSupabase();
     setAuthToken(null);
     setCurrentUser(null);
     setAnalysis(null);
@@ -245,7 +247,7 @@ export const App: React.FC = () => {
             <strong>ShopOps Agent</strong> &mdash; Autonomous retail inventory & operations assistant with deterministic guardrails.
           </p>
           <p className="footer-subtext">
-            Non-destructive MVP &bull; Human-in-the-loop approvals &bull; Grounded Gemini AI &bull; Firebase Auth &amp; Firestore
+            Non-destructive MVP &bull; Human-in-the-loop approvals &bull; Grounded Gemini AI &bull; Supabase Auth &amp; PostgreSQL
           </p>
         </div>
       </footer>

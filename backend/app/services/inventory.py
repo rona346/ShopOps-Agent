@@ -208,4 +208,8 @@ class FirestoreInventoryService(InventoryServiceInterface):
 
 def get_inventory_service() -> InventoryServiceInterface:
     """Dependency injection provider for the inventory service."""
+    from app.core.supabase import is_supabase_configured
+    if is_supabase_configured():
+        from app.services.supabase_inventory import SupabaseInventoryService
+        return SupabaseInventoryService()
     return FirestoreInventoryService()

@@ -24,6 +24,7 @@ import tests.test_execution_service as test_execution_service
 import tests.test_firestore_unconfigured as test_firestore_unconfigured
 import tests.test_inventory_api as test_inventory_api
 import tests.test_models as test_models
+import tests.test_supabase_repositories as test_supabase_repositories
 
 
 def run_all_tests():
@@ -51,8 +52,11 @@ def run_all_tests():
     suite.addTests(loader.loadTestsFromModule(test_execution_service))
     suite.addTests(loader.loadTestsFromModule(test_execution_api))
 
-    # Phase 9: Authentication & API Security (16 tests)
+    # Phase 9: Authentication & API Security (26 tests)
     suite.addTests(loader.loadTestsFromModule(test_auth_api))
+
+    # Modules 2 & 3: Supabase PostgreSQL Repositories (7 tests)
+    suite.addTests(loader.loadTestsFromModule(test_supabase_repositories))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

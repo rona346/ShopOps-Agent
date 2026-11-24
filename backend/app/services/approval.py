@@ -331,6 +331,13 @@ def get_approval_service(
     analysis_service: InventoryAnalysisService = Depends(get_inventory_analysis_service),
 ) -> ApprovalServiceInterface:
     """Dependency injection provider for the approval service."""
+    from app.core.supabase import is_supabase_configured
+    if is_supabase_configured():
+        from app.services.supabase_approval import SupabaseApprovalService
+        return SupabaseApprovalService(
+            inventory_service=inventory_service,
+            analysis_service=analysis_service,
+        )
     return FirestoreApprovalService(
         inventory_service=inventory_service,
         analysis_service=analysis_service,

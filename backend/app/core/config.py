@@ -57,7 +57,14 @@ class Settings(BaseSettings):
     DEV_AUTH_TOKEN: Optional[str] = "shopops-dev-owner-token"
     ENABLE_DEV_AUTH: bool = True
 
-    # Firebase Admin SDK
+    # Supabase Configuration
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_KEY: Optional[str] = None
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
+    SUPABASE_JWT_SECRET: Optional[str] = None
+    DATABASE_URL: Optional[str] = None
+
+    # Firebase Admin SDK (legacy / fallback)
     FIREBASE_PROJECT_ID: Optional[str] = None
     FIREBASE_CREDENTIALS_PATH: Optional[str] = None
 

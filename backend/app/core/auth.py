@@ -8,10 +8,17 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from firebase_admin import auth
+import jwt
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.core.firebase import get_firebase_app, is_firebase_configured
+from app.core.supabase import (
+    is_supabase_configured,
+    verify_supabase_jwt,
+    SupabaseError,
+    SupabaseUnavailableError,
+)
 
 security = HTTPBearer(auto_error=False)
 
@@ -72,15 +79,49 @@ def get_current_user(
 
     env = (settings.ENVIRONMENT or "").strip().lower()
 
-    # 1. Fail Closed in Production if Firebase is unconfigured
-    if env == "production" and not is_firebase_configured():
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Production mode requires valid Firebase Admin configuration. Development fallback authentication is disabled.",
-            headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
-        )
+    # 1. Primary: Live Supabase Authentication Verification
+    if is_supabase_configured():
+        try:
+            user_info = verify_supabase_jwt(token)
+            email = user_info.get("email")
 
-    # 2. Live Firebase Authentication Verification
+            # Enforce single-owner restriction if OWNER_EMAIL is defined
+            if settings.OWNER_EMAIL:
+                if not email or email.strip().lower() != settings.OWNER_EMAIL.strip().lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"User '{email or 'unknown'}' is not authorized as the store owner.",
+                    )
+
+            return AuthenticatedUser(
+                uid=user_info.get("uid", ""),
+                email=email,
+                role="owner",
+            )
+        except HTTPException:
+            raise
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication token has expired",
+                headers={
+                    "WWW-Authenticate": 'Bearer error="invalid_token", error_description="The token has expired"'
+                },
+            )
+        except jwt.InvalidTokenError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid authentication token: {str(exc)}",
+                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+            )
+        except (SupabaseError, Exception) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Supabase authentication verification failed: {str(exc)}",
+                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+            )
+
+    # 2. Secondary / Legacy: Firebase Authentication Verification
     if is_firebase_configured():
         try:
             app = get_firebase_app()
@@ -131,7 +172,15 @@ def get_current_user(
                 headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
             )
 
-    # 3. Explicit Development Mode Fallback
+    # 3. Fail Closed in Production if neither Supabase nor Firebase is configured
+    if env == "production":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Production mode requires valid Firebase Admin or Supabase configuration. Development fallback authentication is disabled.",
+            headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+        )
+
+    # 4. Explicit Development Mode Fallback
     if is_dev_auth_enabled():
         if token == settings.DEV_AUTH_TOKEN:
             return AuthenticatedUser(
@@ -140,7 +189,7 @@ def get_current_user(
                 role="owner",
             )
 
-    # 4. Fail Closed: Reject all other tokens as unauthorized
+    # 5. Fail Closed: Reject all other tokens as unauthorized
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid authentication token. Development fallback is disabled or token did not match.",

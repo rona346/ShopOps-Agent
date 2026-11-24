@@ -66,6 +66,13 @@ cp .env.example .env
 
 Default backend base URL is `http://localhost:8000`. If running on a different port or domain, adjust `VITE_API_BASE_URL` in `.env`.
 
+### Supabase Authentication Configuration
+To enable live store owner sign-in:
+1. Go to your [Supabase Dashboard](https://supabase.com/dashboard) -> **Project Settings** -> **API**.
+2. Copy the **Project URL** and set it as `VITE_SUPABASE_URL`.
+3. Copy the **anon public key** and set it as `VITE_SUPABASE_ANON_KEY`.
+4. *Important:* Never expose `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_JWT_SECRET` in frontend `.env` or Vercel variables.
+
 ### Running Development Server
 
 ```bash

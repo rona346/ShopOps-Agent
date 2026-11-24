@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Modal } from './Modal';
+import { isSupabaseClientConfigured, signInWithSupabase } from '../services/supabaseAuth';
 import { isFirebaseClientConfigured, signInWithFirebase } from '../services/firebase';
 import { setAuthToken, getAuthMe } from '../services/api';
 import { AuthenticatedUser } from '../types';
@@ -22,9 +23,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  const supabaseReady = isSupabaseClientConfigured();
   const firebaseReady = isFirebaseClientConfigured();
 
-  const handleFirebaseSignIn = async (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
       setError('Please provide both email and password.');
@@ -34,13 +36,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     try {
       setLoading(true);
       setError(null);
-      const idToken = await signInWithFirebase(email.trim(), password);
-      setAuthToken(idToken);
+
+      let token: string;
+      if (supabaseReady) {
+        token = await signInWithSupabase(email.trim(), password);
+      } else if (firebaseReady) {
+        token = await signInWithFirebase(email.trim(), password);
+      } else {
+        throw new Error('No authentication provider configured.');
+      }
+
+      setAuthToken(token);
       const user = await getAuthMe();
       onAuthenticated(user);
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Firebase sign-in failed. Please check credentials.');
+      setError(err.message || 'Authentication failed. Please verify credentials.');
       setAuthToken(null);
     } finally {
       setLoading(false);
@@ -83,6 +94,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
+  const hasCloudAuth = supabaseReady || firebaseReady;
+
   return (
     <Modal
       isOpen={isOpen}
@@ -104,8 +117,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </p>
         </div>
 
-        {firebaseReady ? (
-          <form onSubmit={handleFirebaseSignIn} className="auth-form">
+        {hasCloudAuth ? (
+          <form onSubmit={handleSignIn} className="auth-form">
+            <div style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: 'var(--text-muted, #64748b)' }}>
+              Provider: <strong>{supabaseReady ? 'Supabase Auth' : 'Firebase Auth'}</strong>
+            </div>
             <div className="form-group">
               <label htmlFor="auth-email">Owner Email</label>
               <input
@@ -138,7 +154,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               style={{ marginTop: '0.75rem' }}
               disabled={loading}
             >
-              {loading ? 'Signing In...' : 'Sign In with Firebase'}
+              {loading ? 'Signing In...' : `Sign In with ${supabaseReady ? 'Supabase' : 'Firebase'}`}
             </button>
           </form>
         ) : (
@@ -146,7 +162,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div className="alert-box alert-warning" style={{ marginBottom: '1rem' }}>
               <strong>Cloud Auth Notice:</strong>
               <p style={{ marginTop: '0.25rem', fontSize: '0.85rem' }}>
-                Firebase Web credentials are not yet configured in <code>frontend/.env</code>.
+                Supabase credentials (<code>VITE_SUPABASE_URL</code>, <code>VITE_SUPABASE_ANON_KEY</code>)
+                are not yet configured in <code>frontend/.env</code>.
                 You can authenticate using the <strong>Local Store Owner (Dev Mode)</strong> token.
               </p>
             </div>
@@ -170,20 +187,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             style={{ fontSize: '0.8rem' }}
             onClick={() => setShowAdvanced(!showAdvanced)}
           >
-            {showAdvanced ? '▲ Hide Advanced Options' : '▼ Advanced: Manual Bearer Token'}
+            {showAdvanced ? '▲ Hide Advanced Options' : '▼ Advanced: Manual Bearer / Supabase JWT Token'}
           </button>
 
           {showAdvanced && (
             <form onSubmit={handleCustomTokenSubmit} style={{ marginTop: '0.75rem' }}>
               <div className="form-group">
                 <label htmlFor="custom-token" style={{ fontSize: '0.8rem' }}>
-                  Custom Bearer / Firebase ID Token
+                  Custom Bearer / Supabase Access Token
                 </label>
                 <input
                   id="custom-token"
                   type="text"
                   className="form-control form-control-sm"
-                  placeholder="Paste Bearer token here..."
+                  placeholder="Paste Supabase JWT or dev token here..."
                   value={customToken}
                   onChange={(e) => setCustomToken(e.target.value)}
                   disabled={loading}

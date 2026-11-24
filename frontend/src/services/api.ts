@@ -21,30 +21,26 @@ import {
   AuthenticatedUser,
   AuthStatusResponse,
 } from '../types';
+import {
+  getStoredAccessToken,
+  storeAuthSession,
+  clearAuthSession,
+  isTokenExpired,
+  refreshSupabaseToken,
+} from './supabaseAuth';
 
 const API_BASE_URL: string =
   (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
 
-const TOKEN_KEY = 'shopops_auth_token';
-
-let currentAuthToken: string | null =
-  typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
-
 export function getAuthToken(): string | null {
-  if (!currentAuthToken && typeof window !== 'undefined') {
-    currentAuthToken = localStorage.getItem(TOKEN_KEY);
-  }
-  return currentAuthToken;
+  return getStoredAccessToken();
 }
 
 export function setAuthToken(token: string | null): void {
-  currentAuthToken = token;
-  if (typeof window !== 'undefined') {
-    if (token) {
-      localStorage.setItem(TOKEN_KEY, token);
-    } else {
-      localStorage.removeItem(TOKEN_KEY);
-    }
+  if (token) {
+    storeAuthSession({ access_token: token });
+  } else {
+    clearAuthSession();
   }
 }
 
@@ -61,8 +57,17 @@ export class ApiError extends Error {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  let token = getAuthToken();
+
+  // If token is expired or close to expiry, attempt silent refresh before request
+  if (token && isTokenExpired()) {
+    const refreshed = await refreshSupabaseToken();
+    if (refreshed) {
+      token = refreshed;
+    }
+  }
+
   const url = `${API_BASE_URL}${endpoint}`;
-  const token = getAuthToken();
   const authHeaders: Record<string, string> = token
     ? { Authorization: `Bearer ${token}` }
     : {};
@@ -74,7 +79,20 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   };
 
   try {
-    const response = await fetch(url, { ...options, headers });
+    let response = await fetch(url, { ...options, headers });
+
+    // Reactive retry on 401: attempt token refresh once
+    if (response.status === 401 && token) {
+      const refreshed = await refreshSupabaseToken();
+      if (refreshed) {
+        token = refreshed;
+        const retryHeaders = {
+          ...headers,
+          Authorization: `Bearer ${refreshed}`,
+        };
+        response = await fetch(url, { ...options, headers: retryHeaders });
+      }
+    }
 
     if (!response.ok) {
       let detail = `Error ${response.status}: ${response.statusText}`;

@@ -180,6 +180,7 @@ export interface AuthenticatedUser {
 }
 
 export interface AuthStatusResponse {
+  supabase_configured?: boolean;
   firebase_configured: boolean;
   auth_provider: string;
   owner_email_configured: boolean;

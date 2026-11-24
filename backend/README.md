@@ -21,7 +21,8 @@ backend/
 │   │       └── router.py            # Central API v1 router
 │   ├── core/
 │   │   ├── config.py                # Pydantic Settings & environment variable parsing
-│   │   ├── firebase.py              # Lazy Firebase Admin & Firestore client provider
+│   │   ├── supabase.py              # Supabase JWT verification & PostgREST database client
+│   │   ├── firebase.py              # Lazy Firebase Admin & Firestore client provider (legacy fallback)
 │   │   └── gemini.py                # Lazy Google Gemini client provider
 │   ├── models/
 │   │   ├── __init__.py
@@ -32,11 +33,14 @@ backend/
 │   │   └── task.py                  # Reorder task schemas (TaskStatus, TaskCreate, TaskResponse)
 │   ├── services/
 │   │   ├── __init__.py
-│   │   ├── inventory.py             # FirestoreInventoryService and repository interface
+│   │   ├── supabase_inventory.py    # Supabase PostgreSQL inventory service
+│   │   ├── supabase_approval.py     # Supabase PostgreSQL approval service
+│   │   ├── supabase_task.py         # Supabase PostgreSQL reorder task service
+│   │   ├── inventory.py             # InventoryServiceInterface & Firestore fallback
 │   │   ├── inventory_analysis.py    # Deterministic InventoryAnalysisService engine
 │   │   ├── agent.py                 # Gemini InventoryAgentService
-│   │   ├── approval.py              # FirestoreApprovalService and repository interface
-│   │   └── execution.py             # ActionExecutionService & FirestoreTaskService
+│   │   ├── approval.py              # ApprovalServiceInterface & Firestore fallback
+│   │   └── execution.py             # ActionExecutionService & TaskServiceInterface
 │   ├── __init__.py
 │   └── main.py                      # FastAPI entrypoint, error handlers, and core routes
 ├── tests/
@@ -56,7 +60,9 @@ backend/
 │   ├── test_approval_api.py         # API integration tests for /approvals endpoints
 │   ├── test_execution_service.py    # Unit tests for action execution, idempotency & verification
 │   ├── test_execution_api.py        # API tests for execution trigger and /tasks endpoints
-│   └── run_tests.py                 # Automated test runner
+│   ├── test_auth_api.py             # API tests for Supabase & Firebase auth, owner authorization
+│   ├── test_supabase_repositories.py# Unit tests for Supabase PostgreSQL repositories
+│   └── run_tests.py                 # Automated test runner (113 tests)
 ├── .env.example                     # Environment template (no secrets)
 ├── requirements.txt                 # Backend dependencies
 └── README.md                        # Documentation

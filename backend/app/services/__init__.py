@@ -39,6 +39,9 @@ from app.services.inventory_analysis import (
     InventoryAnalysisService,
     get_inventory_analysis_service,
 )
+from app.services.supabase_inventory import SupabaseInventoryService
+from app.services.supabase_approval import SupabaseApprovalService
+from app.services.supabase_task import SupabaseTaskService
 
 __all__ = [
     "InventoryServiceError",
@@ -47,6 +50,7 @@ __all__ = [
     "FirebaseUnavailableError",
     "InventoryServiceInterface",
     "FirestoreInventoryService",
+    "SupabaseInventoryService",
     "get_inventory_service",
     "InventoryAnalysisService",
     "get_inventory_analysis_service",
@@ -61,6 +65,7 @@ __all__ = [
     "NoReorderNeededError",
     "ApprovalServiceInterface",
     "FirestoreApprovalService",
+    "SupabaseApprovalService",
     "get_approval_service",
     "ExecutionError",
     "InvalidExecutionStateError",
@@ -69,6 +74,7 @@ __all__ = [
     "TaskPersistenceError",
     "TaskServiceInterface",
     "FirestoreTaskService",
+    "SupabaseTaskService",
     "ActionExecutionService",
     "get_task_service",
     "get_action_execution_service",

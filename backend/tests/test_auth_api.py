@@ -4,6 +4,7 @@ Verifies protected endpoints, 401 responses, token validation, and public routes
 """
 
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -13,6 +14,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 from fastapi.testclient import TestClient
 from firebase_admin import auth
+import jwt
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import settings
@@ -181,6 +183,104 @@ class TestAuthAPI(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 401)
         self.assertIn("invalid", res.json()["detail"].lower())
+
+    # ----------------------------------------------------
+    # Supabase Token Verification Unit Tests
+    # ----------------------------------------------------
+    def test_supabase_jwt_valid_token_verified(self):
+        """When Supabase is configured with JWT secret, valid token decodes successfully."""
+        secret = "test-supabase-jwt-secret-at-least-32-chars-long"
+        payload = {
+            "sub": "supabase_user_789",
+            "email": "owner@store.com",
+            "aud": "authenticated",
+            "role": "authenticated",
+            "exp": int(time.time()) + 3600,
+        }
+        token = jwt.encode(payload, secret, algorithm="HS256")
+
+        with patch.object(settings, "SUPABASE_JWT_SECRET", secret):
+            res = self.client.get(
+                "/api/v1/auth/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            self.assertEqual(res.status_code, 200)
+            data = res.json()
+            self.assertEqual(data["uid"], "supabase_user_789")
+            self.assertEqual(data["email"], "owner@store.com")
+            self.assertEqual(data["role"], "owner")
+
+    def test_supabase_jwt_expired_token_rejected(self):
+        """When Supabase JWT is expired, returns HTTP 401 with expired message."""
+        secret = "test-supabase-jwt-secret-at-least-32-chars-long"
+        payload = {
+            "sub": "supabase_user_789",
+            "email": "owner@store.com",
+            "aud": "authenticated",
+            "role": "authenticated",
+            "exp": int(time.time()) - 3600,
+        }
+        token = jwt.encode(payload, secret, algorithm="HS256")
+
+        with patch.object(settings, "SUPABASE_JWT_SECRET", secret):
+            res = self.client.get(
+                "/api/v1/auth/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            self.assertEqual(res.status_code, 401)
+            self.assertIn("expired", res.json()["detail"].lower())
+
+    def test_supabase_jwt_invalid_signature_rejected(self):
+        """When Supabase JWT has invalid signature, returns HTTP 401."""
+        secret = "test-supabase-jwt-secret-at-least-32-chars-long"
+        wrong_secret = "completely-wrong-secret-for-signing-token"
+        payload = {
+            "sub": "supabase_user_789",
+            "email": "owner@store.com",
+            "aud": "authenticated",
+            "role": "authenticated",
+            "exp": int(time.time()) + 3600,
+        }
+        token = jwt.encode(payload, wrong_secret, algorithm="HS256")
+
+        with patch.object(settings, "SUPABASE_JWT_SECRET", secret):
+            res = self.client.get(
+                "/api/v1/auth/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            self.assertEqual(res.status_code, 401)
+            self.assertIn("invalid", res.json()["detail"].lower())
+
+    def test_supabase_jwt_non_owner_forbidden(self):
+        """Verified Supabase account with unauthorized email receives HTTP 403 Forbidden."""
+        secret = "test-supabase-jwt-secret-at-least-32-chars-long"
+        payload = {
+            "sub": "supabase_intruder_999",
+            "email": "intruder@malicious.com",
+            "aud": "authenticated",
+            "role": "authenticated",
+            "exp": int(time.time()) + 3600,
+        }
+        token = jwt.encode(payload, secret, algorithm="HS256")
+
+        with patch.object(settings, "SUPABASE_JWT_SECRET", secret):
+            with patch.object(settings, "OWNER_EMAIL", "authorized-owner@shopops.com"):
+                res = self.client.get(
+                    "/api/v1/inventory",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                self.assertEqual(res.status_code, 403)
+                self.assertIn("not authorized as the store owner", res.json()["detail"])
+
+    def test_auth_status_reports_supabase_when_configured(self):
+        """When Supabase is configured, /api/v1/auth/status reflects Supabase provider."""
+        with patch.object(settings, "SUPABASE_URL", "https://xyzproject.supabase.co"):
+            with patch.object(settings, "SUPABASE_SERVICE_ROLE_KEY", "mock-service-key"):
+                res = self.client.get("/api/v1/auth/status")
+                self.assertEqual(res.status_code, 200)
+                data = res.json()
+                self.assertTrue(data["supabase_configured"])
+                self.assertEqual(data["auth_provider"], "supabase")
 
     # ----------------------------------------------------
     # Phase 10: Critical Security Isolation & Fail-Closed Tests

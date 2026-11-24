@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import settings
 from app.core.firebase import is_firebase_configured
+from app.core.supabase import is_supabase_configured
 
 router = APIRouter()
 
@@ -18,10 +19,19 @@ router = APIRouter()
 )
 def get_auth_status() -> Dict[str, Any]:
     """Public status endpoint to inspect configured authentication mode."""
+    supabase_ready = is_supabase_configured()
     firebase_ready = is_firebase_configured()
+    if supabase_ready:
+        provider = "supabase"
+    elif firebase_ready:
+        provider = "firebase"
+    else:
+        provider = "development_token"
+
     return {
+        "supabase_configured": supabase_ready,
         "firebase_configured": firebase_ready,
-        "auth_provider": "firebase" if firebase_ready else "development_token",
+        "auth_provider": provider,
         "owner_email_configured": bool(settings.OWNER_EMAIL),
         "environment": settings.ENVIRONMENT,
     }

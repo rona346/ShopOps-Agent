@@ -233,6 +233,10 @@ class ActionExecutionService:
 
 def get_task_service() -> TaskServiceInterface:
     """Dependency provider for TaskServiceInterface."""
+    from app.core.supabase import is_supabase_configured
+    if is_supabase_configured():
+        from app.services.supabase_task import SupabaseTaskService
+        return SupabaseTaskService()
     return FirestoreTaskService()
 
 
