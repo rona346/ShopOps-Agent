@@ -30,6 +30,7 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
+    CORS_ORIGIN_REGEX: Optional[str] = r"^https:\/\/.*\.vercel\.app$"
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
@@ -39,12 +40,12 @@ class Settings(BaseSettings):
             if v_stripped.startswith("[") and v_stripped.endswith("]"):
                 import json
                 try:
-                    return json.loads(v_stripped)
+                    return [o.strip().rstrip("/") for o in json.loads(v_stripped) if isinstance(o, str) and o.strip()]
                 except Exception:
                     pass
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
+            return [origin.strip().rstrip("/") for origin in v.split(",") if origin.strip()]
         if isinstance(v, list):
-            return v
+            return [o.strip().rstrip("/") for o in v if isinstance(o, str) and o.strip()]
         return ["http://localhost:5173", "http://127.0.0.1:5173"]
 
     # Google Gemini API

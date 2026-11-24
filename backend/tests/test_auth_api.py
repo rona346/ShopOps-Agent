@@ -265,6 +265,51 @@ class TestAuthAPI(unittest.TestCase):
             self.assertEqual(res_owner.status_code, 200)
             self.assertEqual(res_owner.json()["email"], "authorized-owner@shopops.com")
 
+    def test_cors_preflight_production_and_preview_domains(self):
+        """Verify CORS preflight succeeds for Vercel production and preview domains."""
+        # 1. Production domain
+        res_prod = self.client.options(
+            "/api/v1/tasks?limit=50&offset=0",
+            headers={
+                "Origin": "https://shop-ops-agent.vercel.app",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+        self.assertEqual(res_prod.status_code, 200)
+        self.assertEqual(
+            res_prod.headers.get("access-control-allow-origin"),
+            "https://shop-ops-agent.vercel.app",
+        )
+        self.assertEqual(res_prod.headers.get("access-control-allow-credentials"), "true")
+
+        # 2. Preview domain
+        res_prev = self.client.options(
+            "/api/v1/tasks?limit=50&offset=0",
+            headers={
+                "Origin": "https://shop-ops-agent-avrtm8ir5-guptaronak810-7522s-projects.vercel.app",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+        self.assertEqual(res_prev.status_code, 200)
+        self.assertEqual(
+            res_prev.headers.get("access-control-allow-origin"),
+            "https://shop-ops-agent-avrtm8ir5-guptaronak810-7522s-projects.vercel.app",
+        )
+
+        # 3. Disallowed origin fails
+        res_bad = self.client.options(
+            "/api/v1/tasks?limit=50&offset=0",
+            headers={
+                "Origin": "https://malicious-domain.com",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+        self.assertEqual(res_bad.status_code, 400)
+        self.assertNotIn("access-control-allow-origin", res_bad.headers)
+
 
 if __name__ == "__main__":
     unittest.main()
