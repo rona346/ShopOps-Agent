@@ -266,7 +266,7 @@ To apply the database schema to your Supabase project:
 |:---|:---|:---|
 | **Backend Framework** | **FastAPI** (Python 3.10+) | High-performance asynchronous REST API, OpenAPI docs |
 | **Data Validation** | **Pydantic v2** & **Pydantic Settings** | Strict schemas, field validation, settings management |
-| **Generative AI** | **Google Gemini API** (`gemini-2.5-flash`) | Executive briefing synthesis, grounded conversational inquiry |
+| **Generative AI** | **Google Gemini API** (`gemini-3.8-flash`) | Executive briefing synthesis, grounded conversational inquiry |
 | **Database** | **Supabase PostgreSQL** | Relational storage, triggers, indexes, fail-closed RLS |
 | **Backend Auth** | **Supabase JWT** + PyJWT | Cryptographic token verification & `OWNER_EMAIL` authorization |
 | **Frontend Framework** | **React 18**, **TypeScript**, **Vite** | Responsive, accessible retail owner dashboard |
