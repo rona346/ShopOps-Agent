@@ -103,7 +103,7 @@ export const AgentSection: React.FC<AgentSectionProps> = ({ onNotify }) => {
           <div className="card agent-card">
             <div className="card-header">
               <h3>📋 Executive Store Briefing</h3>
-              <span className="badge badge-primary">Gemini 2.5 Flash</span>
+              <span className="badge badge-primary">Gemini 3.8 Flash</span>
             </div>
 
             <div className="card-body">
