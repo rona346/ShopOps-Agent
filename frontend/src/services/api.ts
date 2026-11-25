@@ -143,7 +143,19 @@ export async function getAuthMe(): Promise<AuthenticatedUser> {
 // Health
 // ==========================================
 export async function checkBackendHealth(): Promise<HealthResponse> {
-  return request<HealthResponse>('/health');
+  const url = `${API_BASE_URL}/health`;
+  try {
+    const response = await fetch(url, { method: 'GET' });
+    if (!response.ok) {
+      throw new ApiError(response.status, `Health check returned status ${response.status}`);
+    }
+    return await response.json();
+  } catch (err: any) {
+    if (err instanceof ApiError) {
+      throw err;
+    }
+    throw new ApiError(0, err.message || 'Network error connecting to health endpoint');
+  }
 }
 
 // ==========================================

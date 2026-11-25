@@ -25,6 +25,7 @@ import tests.test_firestore_unconfigured as test_firestore_unconfigured
 import tests.test_inventory_api as test_inventory_api
 import tests.test_models as test_models
 import tests.test_supabase_repositories as test_supabase_repositories
+import tests.test_cors_and_errors as test_cors_and_errors
 
 
 def run_all_tests():
@@ -57,6 +58,9 @@ def run_all_tests():
 
     # Modules 2 & 3: Supabase PostgreSQL Repositories (7 tests)
     suite.addTests(loader.loadTestsFromModule(test_supabase_repositories))
+
+    # CORS and Error Response Middleware (7 tests)
+    suite.addTests(loader.loadTestsFromModule(test_cors_and_errors))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

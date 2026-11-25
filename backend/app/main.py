@@ -2,6 +2,7 @@
 Main FastAPI application entry point for ShopOps Agent.
 """
 
+import logging
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -33,6 +34,8 @@ from app.services.inventory import (
     ProductNotFoundError,
 )
 
+logger = logging.getLogger("shopops.api")
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description=settings.PROJECT_DESCRIPTION,
@@ -42,7 +45,23 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
+# Inner middleware: catch unhandled server exceptions so that 500 error responses
+# are properly formatted as JSON and wrapped by CORSMiddleware.
+@app.middleware("http")
+async def unhandled_exception_middleware(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        logger.error("Unhandled server exception: %s", exc, exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "An internal server error occurred."},
+        )
+
+
 # Configure Cross-Origin Resource Sharing (CORS)
+# Registered AFTER inner middleware so CORSMiddleware wraps outermost in user_middleware,
+# ensuring all responses (including 500 and 502 error responses) include CORS headers.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -147,6 +166,30 @@ async def supabase_unavailable_handler(request: Request, exc: SupabaseUnavailabl
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(SupabaseQueryError)
+async def supabase_query_error_handler(request: Request, exc: SupabaseQueryError):
+    logger.error("Supabase query error: %s", exc)
+    status_code = (
+        exc.status_code
+        if 400 <= exc.status_code < 600
+        else status.HTTP_500_INTERNAL_SERVER_ERROR
+    )
+    detail = "Database service error." if status_code >= 500 else str(exc)
+    return JSONResponse(
+        status_code=status_code,
+        content={"detail": detail},
+    )
+
+
+@app.exception_handler(SupabaseError)
+async def supabase_error_handler(request: Request, exc: SupabaseError):
+    logger.error("Supabase error: %s", exc)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Database operation failed."},
     )
 
 

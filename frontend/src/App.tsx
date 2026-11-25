@@ -115,6 +115,17 @@ export const App: React.FC = () => {
         listTasks({ limit: 100 }),
       ]);
 
+      const anyFulfilled =
+        analysisRes.status === 'fulfilled' ||
+        approvalsRes.status === 'fulfilled' ||
+        tasksRes.status === 'fulfilled';
+
+      if (anyFulfilled) {
+        setBackendOnline(true);
+      } else {
+        setBackendOnline(false);
+      }
+
       if (analysisRes.status === 'fulfilled') {
         setAnalysis(analysisRes.value);
       } else {

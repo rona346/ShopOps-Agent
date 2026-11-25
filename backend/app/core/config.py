@@ -29,24 +29,38 @@ class Settings(BaseSettings):
     CORS_ORIGINS: Union[List[str], str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://shop-ops-agent.vercel.app",
     ]
     CORS_ORIGIN_REGEX: Optional[str] = r"^https:\/\/.*\.vercel\.app$"
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        default_origins = [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "https://shop-ops-agent.vercel.app",
+        ]
+        parsed: List[str] = []
         if isinstance(v, str):
             v_stripped = v.strip()
             if v_stripped.startswith("[") and v_stripped.endswith("]"):
                 import json
                 try:
-                    return [o.strip().rstrip("/") for o in json.loads(v_stripped) if isinstance(o, str) and o.strip()]
+                    parsed = [o.strip().rstrip("/") for o in json.loads(v_stripped) if isinstance(o, str) and o.strip()]
                 except Exception:
-                    pass
-            return [origin.strip().rstrip("/") for origin in v.split(",") if origin.strip()]
-        if isinstance(v, list):
-            return [o.strip().rstrip("/") for o in v if isinstance(o, str) and o.strip()]
-        return ["http://localhost:5173", "http://127.0.0.1:5173"]
+                    parsed = []
+            else:
+                parsed = [origin.strip().rstrip("/") for origin in v.split(",") if origin.strip()]
+        elif isinstance(v, list):
+            parsed = [o.strip().rstrip("/") for o in v if isinstance(o, str) and o.strip()]
+        else:
+            return default_origins
+
+        # Guarantee production Vercel origin is always included
+        if "https://shop-ops-agent.vercel.app" not in parsed:
+            parsed.append("https://shop-ops-agent.vercel.app")
+        return parsed
 
     # Google Gemini API
     GEMINI_API_KEY: Optional[str] = None
