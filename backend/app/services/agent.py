@@ -5,7 +5,10 @@ and natural language Q&A. Strictly read-only; cannot write to database or execut
 """
 
 import json
+import logging
+import time
 from typing import Any, Callable, Dict, Optional
+import httpx
 from fastapi import Depends
 from google.genai import types
 from app.core import gemini
@@ -18,6 +21,8 @@ from app.services.inventory_analysis import (
     InventoryAnalysisService,
     get_inventory_analysis_service,
 )
+
+logger = logging.getLogger("shopops.agent")
 
 
 class AgentServiceError(Exception):
@@ -35,6 +40,32 @@ class GeminiServiceError(AgentServiceError):
     pass
 
 
+def is_transient_gemini_error(exc: Exception) -> bool:
+    """
+    Determine if an exception represents a transient Gemini API failure suitable for retry.
+    Matches HTTP 503 (service unavailable / high demand / model overloaded),
+    HTTP 429 (quota burst / rate limit), HTTP 504 (gateway timeout), and network timeouts.
+    Never matches non-transient client errors (400, 401, 403, 404).
+    """
+    code = getattr(exc, "code", None)
+    if code in (429, 503, 504):
+        return True
+
+    response = getattr(exc, "response", None)
+    if response is not None and getattr(response, "status_code", None) in (429, 503, 504):
+        return True
+
+    if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, ConnectionError)):
+        return True
+
+    err_str = str(exc).lower()
+    if any(k in err_str for k in ("503", "overloaded", "high demand", "429", "resource exhausted", "try again later", "timed out", "timeout")):
+        if not any(k in err_str for k in ("404", "not found", "401", "unauthorized", "invalid api key", "403", "permission denied")):
+            return True
+
+    return False
+
+
 class InventoryAgentService:
     """
     AI Operations Assistant powered by Google Gemini.
@@ -43,15 +74,20 @@ class InventoryAgentService:
     - Grounded exclusively in deterministic inventory analysis results.
     - Cannot alter deterministic quantities or reorder points.
     - Gracefully handles missing keys and model failures.
+    - Safe bounded retry for transient upstream 503/429 errors.
     """
 
     def __init__(
         self,
         analysis_service: InventoryAnalysisService,
         gemini_client_provider: Callable[[], Any] = gemini.get_gemini_client,
+        max_retries: int = 2,
+        base_delay: float = 1.0,
     ):
         self.analysis_service = analysis_service
         self.get_client = gemini_client_provider
+        self.max_retries = max_retries
+        self.base_delay = base_delay
 
     def _ensure_gemini_configured(self) -> None:
         if not gemini.is_gemini_configured():
@@ -59,6 +95,45 @@ class InventoryAgentService:
                 "Gemini AI service is not configured. "
                 "Please set GEMINI_API_KEY in backend/.env before invoking AI agent features."
             )
+
+    def _call_gemini_with_retry(
+        self,
+        client: Any,
+        model: str,
+        contents: str,
+        config: Any,
+        action_name: str = "request",
+    ) -> Any:
+        """
+        Execute client.models.generate_content with bounded exponential backoff
+        for transient upstream errors (503 High Demand / Model Overloaded, 429 Rate Limit).
+        Fails fast on non-transient errors (404 deprecated model, 401 invalid key).
+        """
+        last_exception: Optional[Exception] = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                return client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=config,
+                )
+            except Exception as exc:
+                last_exception = exc
+                if attempt < self.max_retries and is_transient_gemini_error(exc):
+                    delay = self.base_delay * (2 ** attempt)
+                    logger.warning(
+                        "Gemini API transient failure on attempt %d/%d (%s). Retrying in %.2fs...",
+                        attempt + 1,
+                        self.max_retries + 1,
+                        exc,
+                        delay,
+                    )
+                    if delay > 0:
+                        time.sleep(delay)
+                else:
+                    break
+
+        raise GeminiServiceError(f"Gemini API {action_name} failed: {str(last_exception)}") from last_exception
 
     def generate_inventory_insights(
         self, category: Optional[str] = None
@@ -123,7 +198,8 @@ class InventoryAgentService:
         client = self.get_client()
 
         try:
-            response = client.models.generate_content(
+            response = self._call_gemini_with_retry(
+                client=client,
                 model=settings.GEMINI_MODEL,
                 contents=prompt,
                 config=types.GenerateContentConfig(
@@ -131,7 +207,10 @@ class InventoryAgentService:
                     response_mime_type="application/json",
                     temperature=0.2,
                 ),
+                action_name="request",
             )
+        except GeminiServiceError:
+            raise
         except Exception as e:
             raise GeminiServiceError(f"Gemini API request failed: {str(e)}") from e
 
@@ -203,7 +282,8 @@ class InventoryAgentService:
         client = self.get_client()
 
         try:
-            response = client.models.generate_content(
+            response = self._call_gemini_with_retry(
+                client=client,
                 model=settings.GEMINI_MODEL,
                 contents=prompt,
                 config=types.GenerateContentConfig(
@@ -211,7 +291,10 @@ class InventoryAgentService:
                     response_mime_type="application/json",
                     temperature=0.2,
                 ),
+                action_name="request",
             )
+        except GeminiServiceError:
+            raise
         except Exception as e:
             raise GeminiServiceError(f"Gemini API request failed: {str(e)}") from e
 

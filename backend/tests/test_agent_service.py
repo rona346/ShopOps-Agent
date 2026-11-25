@@ -50,6 +50,7 @@ class TestInventoryAgentService(unittest.TestCase):
         self.agent_service = InventoryAgentService(
             analysis_service=self.analysis_service,
             gemini_client_provider=lambda: self.mock_client,
+            base_delay=0.0,
         )
 
     @patch("app.core.gemini.is_gemini_configured", return_value=True)
@@ -119,6 +120,72 @@ class TestInventoryAgentService(unittest.TestCase):
         with self.assertRaises(GeminiServiceError) as ctx:
             self.agent_service.generate_inventory_insights()
         self.assertIn("Failed to parse", str(ctx.exception))
+
+    @patch("app.core.gemini.is_gemini_configured", return_value=True)
+    def test_gemini_transient_503_retries_and_succeeds(self, mock_is_configured):
+        """Verify transient 503 error is retried and succeeds on attempt 2."""
+        from google.genai.errors import ServerError
+        mock_insights = {
+            "summary": "Recovered briefing.",
+            "critical_alerts": [],
+            "reorder_advice": "No reorders needed.",
+            "overstock_advice": None,
+            "action_items": [],
+        }
+        self.mock_client.set_side_effects([
+            ServerError(503, {"error": {"message": "The model is overloaded."}}),
+            json.dumps(mock_insights),
+        ])
+
+        insights = self.agent_service.generate_inventory_insights()
+        self.assertEqual(insights.summary, "Recovered briefing.")
+        self.assertEqual(self.mock_client.models.call_count, 2)
+
+    @patch("app.core.gemini.is_gemini_configured", return_value=True)
+    def test_gemini_transient_429_retries_and_succeeds(self, mock_is_configured):
+        """Verify transient 429 quota burst error is retried and succeeds on attempt 2."""
+        from google.genai.errors import ClientError
+        mock_answer = {
+            "answer": "Recovered query answer.",
+            "relevant_skus": [],
+            "referenced_metrics": {},
+            "suggested_followups": [],
+        }
+        self.mock_client.set_side_effects([
+            ClientError(429, {"error": {"message": "Resource exhausted / Rate limit."}}),
+            json.dumps(mock_answer),
+        ])
+
+        response = self.agent_service.answer_inventory_query("Stock status?")
+        self.assertEqual(response.answer, "Recovered query answer.")
+        self.assertEqual(self.mock_client.models.call_count, 2)
+
+    @patch("app.core.gemini.is_gemini_configured", return_value=True)
+    def test_gemini_non_transient_404_fails_fast_without_retry(self, mock_is_configured):
+        """Verify non-transient 404 (deprecated or missing model) fails immediately without retry."""
+        from google.genai.errors import ClientError
+        self.mock_client.set_error(
+            ClientError(404, {"error": {"message": "models/gemini-2.5-flash is no longer available"}})
+        )
+
+        with self.assertRaises(GeminiServiceError) as ctx:
+            self.agent_service.generate_inventory_insights()
+        self.assertIn("no longer available", str(ctx.exception))
+        self.assertEqual(self.mock_client.models.call_count, 1)
+
+    @patch("app.core.gemini.is_gemini_configured", return_value=True)
+    def test_gemini_transient_exhausts_retries_and_raises(self, mock_is_configured):
+        """Verify persistent transient failure exhausts max retries and raises GeminiServiceError."""
+        from google.genai.errors import ServerError
+        self.mock_client.set_error(
+            ServerError(503, {"error": {"message": "Persistent 503 overload."}})
+        )
+
+        with self.assertRaises(GeminiServiceError) as ctx:
+            self.agent_service.generate_inventory_insights()
+        self.assertIn("Persistent 503 overload", str(ctx.exception))
+        # 1 initial + 2 retries = 3 calls
+        self.assertEqual(self.mock_client.models.call_count, 3)
 
 
 if __name__ == "__main__":
